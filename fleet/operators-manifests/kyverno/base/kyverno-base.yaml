@@ -6,7 +6,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
-  path: ./infra/operators/kyverno/base
+  path: ./clusters/workshop-cluster/infra/operators/kyverno/base
   prune: false
   sourceRef:
     kind: GitRepository

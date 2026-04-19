@@ -6,7 +6,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
-  path: ./infra/resources
+  path: ./clusters/workshop-cluster/infra/resources
   prune: true
   sourceRef:
     kind: GitRepository

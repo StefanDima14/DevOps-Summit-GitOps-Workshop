@@ -6,7 +6,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m0s
-  path: ./fleet/apps-manifests
+  path: ./clusters/workshop-cluster/fleet/apps-manifests
   prune: true
   sourceRef:
     kind: GitRepository
