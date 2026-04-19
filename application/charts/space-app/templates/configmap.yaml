@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "space-app.fullname" . }}-config
+  labels:
+    {{- include "space-app.labels" . | nindent 4 }}
+data:
+  GREETING: {{ .Values.config.greeting | quote }}
+  THEME_ACCENT: {{ .Values.config.themeAccent | quote }}

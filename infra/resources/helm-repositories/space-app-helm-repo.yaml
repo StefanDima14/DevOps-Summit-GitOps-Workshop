@@ -1,0 +1,10 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: space-app-charts
+  namespace: flux-system
+spec:
+  type: oci
+  url: oci://ghcr.io/stefandima14/charts
+  interval: 5m

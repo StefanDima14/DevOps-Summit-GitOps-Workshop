@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-sync
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  path: ./fleet/apps-manifests
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: operators-sync
+  timeout: 10m0s
+  wait: true

@@ -1,0 +1,22 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: demo-app-base
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  path: ./apps/demo-app/base
+  prune: false
+  force: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # dependsOn:
+  #   - name: clients-sync
+  timeout: 5m0s
+  wait: true
+  healthChecks:
+    - apiVersion: v1
+      kind: Namespace
+      name: demo-app

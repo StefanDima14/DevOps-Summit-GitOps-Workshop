@@ -1,0 +1,28 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-app-label
+  annotations:
+    policies.kyverno.io/title: Require app label
+    policies.kyverno.io/description: >-
+      Every Pod in the demo-app namespace must carry an `app` label so
+      workloads are easy to group in dashboards and logs.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-app-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - demo-app
+      validate:
+        message: "Pods in demo-app must set metadata.labels.app"
+        pattern:
+          metadata:
+            labels:
+              app: "?*"

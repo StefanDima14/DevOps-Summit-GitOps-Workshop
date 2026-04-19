@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Space Gallery</title>
+  <style>
+    :root { --accent: #c084fc; }
+    body { font-family: 'Georgia', serif; background: linear-gradient(135deg, #2b0b3f 0%, #0b1a3a 100%); color: #eee; text-align: center; margin: 0; padding: 40px; min-height: 100vh; }
+    h1 { color: var(--accent); font-size: 42px; text-shadow: 0 0 10px rgba(0,0,0,0.6); }
+    img { max-width: 700px; border: 3px solid var(--accent); border-radius: 12px; margin-top: 20px; box-shadow: 0 0 25px rgba(0,0,0,0.4); }
+    button { padding: 14px 28px; font-size: 16px; cursor: pointer; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-weight: bold; }
+    .title { margin-top: 15px; font-size: 24px; color: var(--accent); }
+    .fact { margin: 25px auto; max-width: 600px; padding: 16px; background: rgba(0,0,0,0.2); border-left: 4px solid var(--accent); border-radius: 4px; font-style: italic; }
+    .version { position: fixed; top: 10px; right: 10px; background: var(--accent); color: #2b0b3f; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .premium { display: none; margin: 15px auto; max-width: 400px; padding: 10px; background: linear-gradient(90deg, #fbbf24, #f59e0b); color: #2b0b3f; border-radius: 6px; font-weight: bold; }
+    .premium.on { display: block; }
+  </style>
+</head>
+<body>
+  <div class="version">frontend v3</div>
+  <h1 id="greeting">🌌 Space Explorer</h1>
+  <div class="premium" id="premium">⭐ Premium unlocked</div>
+  <button onclick="load()">✨ Discover</button>
+  <div><img id="img" src="" alt=""></div>
+  <div class="title" id="title"></div>
+  <div class="fact" id="fact"></div>
+  <script>
+    async function loadConfig() {
+      const r = await fetch('/api/config');
+      const c = await r.json();
+      if (c.greeting) document.getElementById('greeting').textContent = c.greeting;
+      if (c.themeAccent) document.documentElement.style.setProperty('--accent', c.themeAccent);
+      if (c.premium) document.getElementById('premium').classList.add('on');
+    }
+    async function load() {
+      const r = await fetch('/api/image');
+      const d = await r.json();
+      document.getElementById('img').src = d.url;
+      document.getElementById('title').textContent = d.title || '';
+      document.getElementById('fact').textContent = d.fact ? '💡 ' + d.fact : '';
+    }
+    loadConfig();
+    load();
+  </script>
+</body>
+</html>

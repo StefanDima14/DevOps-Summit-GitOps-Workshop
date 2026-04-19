@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Space Gallery</title>
+  <style>
+    body { font-family: sans-serif; background: #222; color: #eee; text-align: center; margin: 0; padding: 40px; }
+    h1 { color: #fff; }
+    img { max-width: 600px; border: 2px solid #555; margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    .version { position: fixed; top: 10px; right: 10px; background: #444; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="version">frontend v1</div>
+  <h1 id="greeting">Space Gallery</h1>
+  <button onclick="load()">Get Random Image</button>
+  <div><img id="img" src="" alt=""></div>
+  <script>
+    async function loadConfig() {
+      const r = await fetch('/api/config');
+      const c = await r.json();
+      if (c.greeting) document.getElementById('greeting').textContent = c.greeting;
+    }
+    async function load() {
+      const r = await fetch('/api/image');
+      const d = await r.json();
+      document.getElementById('img').src = d.url;
+    }
+    loadConfig();
+    load();
+  </script>
+</body>
+</html>

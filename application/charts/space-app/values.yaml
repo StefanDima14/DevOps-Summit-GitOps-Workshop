@@ -1,0 +1,30 @@
+backend:
+  image:
+    repository: ghcr.io/stefandima14/space-backend
+    # tag: defaults to Chart.AppVersion (v1 / v2 / v3 depending on chart version)
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 3000
+
+frontend:
+  image:
+    repository: ghcr.io/stefandima14/space-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080
+
+# ConfigMap values — participants edit these in git and watch Flux reconcile.
+config:
+  greeting: "Welcome to Space Gallery"
+  themeAccent: "#ffd166"
+
+# Secret values — plain-text here is a workshop shortcut; in production use
+# SOPS, sealed-secrets, or an external secrets operator.
+secret:
+  apiToken: ""
