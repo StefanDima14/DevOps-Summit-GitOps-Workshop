@@ -44,13 +44,17 @@ Install these once:
 | Docker Desktop | https://www.docker.com/products/docker-desktop/ |
 | kubectl | `brew install kubectl` / apt / choco |
 | Minikube | https://minikube.sigs.k8s.io/docs/start/ |
-| Helm | `brew install helm` |
 | Flux CLI | https://fluxcd.io/flux/installation/#install-the-flux-cli |
 
-Then:
+You'll also need a **GitHub account** and a **Personal Access Token (classic)**. Create one like this:
 
-- In **Docker Desktop → Settings → Resources**, set Memory to **16 GB** and restart Docker.
-- You'll need a **GitHub account** and a **Personal Access Token** (classic) with `repo` scope. Keep it handy — you'll export it as `GITHUB_TOKEN`.
+1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**
+   (direct link: https://github.com/settings/tokens).
+2. Click **Generate new token → Generate new token (classic)**.
+3. **Note:** `flux-workshop` (or anything recognizable).
+4. **Expiration:** 7 days is plenty for this workshop.
+5. **Scopes:** tick **`repo`** (the whole block — gives Flux read/write access to your repo).
+6. Click **Generate token** and **copy the value immediately** — GitHub won't show it again. You'll export it as `GITHUB_TOKEN` in Part 3.
 
 Quick sanity check:
 
@@ -58,7 +62,6 @@ Quick sanity check:
 docker version
 kubectl version --client
 minikube version
-helm version
 flux --version
 ```
 
@@ -70,7 +73,7 @@ flux --version
 minikube start \
   --profile gitops-workshop \
   --cpus 4 \
-  --memory 8192 \
+  --memory 4096 \
   --disk-size 40g
 
 kubectl get nodes   # should show 1 node Ready
@@ -124,11 +127,13 @@ What this does:
 - Installs those controllers in the `flux-system` namespace on your cluster.
 - Sets Flux to reconcile itself from the repo.
 
-Verify:
+Verify the bootstrap:
 
 ```bash
-flux get kustomizations
-kubectl get pods -n flux-system
+flux check                                 # all controllers healthy?
+flux get sources git -A                    # GitRepository "flux-system" Ready?
+flux get kustomizations -A                 # flux-system Kustomization Ready?
+kubectl get pods -n flux-system            # 4 controllers running
 ```
 
 Then clone the repo locally:
@@ -140,12 +145,12 @@ cd $REPO_NAME
 
 ---
 
-## Part 4 — Scaffold the workshop
+## Part 4 — Load the workshop files
 
-From the root of your cloned repo, download the `apps/`, `fleet/`, `infra/`, and `gitops/fleet-manager/` folders **into the cluster path**:
+From the root of your cloned repo, download `apps/`, `fleet/`, `infra/`, and `gitops/fleet-manager/` **into the cluster path**:
 
 ```bash
-mkdir -p clusters/$CLUSTER_NAME && cd clusters/$CLUSTER_NAME
+cd clusters/$CLUSTER_NAME
 
 curl -fL https://github.com/StefanDima14/DevOps-Summit-GitOps-Workshop/archive/refs/heads/main.tar.gz \
   | tar -xz --strip-components=1 \
@@ -157,63 +162,15 @@ curl -fL https://github.com/StefanDima14/DevOps-Summit-GitOps-Workshop/archive/r
 cd -   # back to repo root
 ```
 
-You should now have:
-
-```
-clusters/workshop-cluster/
-├── gitops/
-│   ├── flux-system/      ← from flux bootstrap (don't touch)
-│   └── fleet-manager/    ← just downloaded
-├── apps/
-├── fleet/
-└── infra/
-```
-
----
-
-## Part 5 — Wire `fleet-sync` into Flux
-
-Flux's `flux-system` Kustomization only reconciles what its `kustomization.yaml` lists. Add `fleet-sync` as a resource so Flux picks it up.
-
-Move fleet-sync next to the bootstrap files:
-
-```bash
-mv clusters/$CLUSTER_NAME/gitops/fleet-manager/fleet-sync.yaml \
-   clusters/$CLUSTER_NAME/gitops/flux-system/fleet-sync.yaml
-rm -rf clusters/$CLUSTER_NAME/gitops/fleet-manager
-```
-
-Edit `clusters/workshop-cluster/gitops/flux-system/kustomization.yaml` and append `fleet-sync.yaml`:
-
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-  - fleet-sync.yaml   # ← add this line
-```
-
 Commit and push:
 
 ```bash
 git add clusters
-git commit -m "Scaffold workshop apps and wire fleet-sync"
+git commit -m "Load workshop apps, infra, and fleet manifests"
 git push
 ```
 
----
-
-## Part 6 — Watch it reconcile
-
-Force Flux to pull immediately instead of waiting for the interval:
-
-```bash
-flux reconcile source git flux-system
-flux reconcile kustomization flux-system --with-source
-```
-
-Then watch the chain come up:
+Watch the chain come up:
 
 ```bash
 flux get kustomizations -w
@@ -229,7 +186,203 @@ flux-system → fleet-sync → infra-sync → operators-sync → kyverno-base
 
 ---
 
-## Part 7 — Test the app & Kyverno
+## What you just downloaded
+
+```
+clusters/workshop-cluster/
+├── gitops/
+│   ├── flux-system/                         ← from flux bootstrap (don't touch)
+│   │   ├── gotk-components.yaml             # Flux controllers (source, kustomize, helm, notification)
+│   │   ├── gotk-sync.yaml                   # GitRepository + root Kustomization pointing at this folder
+│   │   └── kustomization.yaml               # lists the two files above
+│   └── fleet-manager/
+│       ├── kustomization.yaml               # lists fleet-sync.yaml
+│       └── fleet-sync.yaml                  # entry point: starts the fleet chain
+│
+├── fleet/                                   ← orchestration layer — "what reconciles what"
+│   ├── kustomization.yaml                   # points to orchestration/
+│   ├── orchestration/
+│   │   ├── kustomization.yaml               # lists the three *-sync files below
+│   │   ├── infra-sync.yaml                  # Kustomization → infra/resources (HelmRepos)
+│   │   ├── operators-sync.yaml              # Kustomization → fleet/operators-manifests
+│   │   └── apps-sync.yaml                   # Kustomization → fleet/apps-manifests
+│   ├── operators-manifests/
+│   │   └── kyverno/
+│   │       ├── base/kyverno-base.yaml       # Kustomization → infra/operators/kyverno/base (namespace)
+│   │       ├── core/kyverno-core.yaml       # Kustomization → infra/operators/kyverno/core (HelmRelease)
+│   │       └── overlays/kyverno-overlays.yaml # Kustomization → .../overlays (ClusterPolicy)
+│   └── apps-manifests/
+│       └── demo-app/
+│           ├── base/demo-app-base.yaml      # Kustomization → apps/demo-app/base (namespace)
+│           └── core/demo-app-core.yaml      # Kustomization → apps/demo-app/core (HelmRelease)
+│
+├── infra/                                   ← actual infra K8s resources
+│   ├── resources/helm-repositories/
+│   │   ├── kyverno-helm-repo.yaml           # HelmRepository (kyverno chart source)
+│   │   └── space-app-helm-repo.yaml         # HelmRepository (OCI, your space-app charts)
+│   └── operators/kyverno/
+│       ├── base/namespace.yaml              # kyverno-operator namespace
+│       ├── core/helmrelease-kyverno.yaml    # HelmRelease installing Kyverno
+│       └── overlays/policies.yaml           # require-app-label ClusterPolicy (Audit mode)
+│
+└── apps/                                    ← actual app K8s resources
+    └── demo-app/
+        ├── base/namespace.yaml              # demo-app namespace
+        └── core/helm-release.yaml           # HelmRelease installing space-app
+```
+
+**Rule of thumb:** `fleet/` holds Flux **Kustomizations** (how/when to reconcile). `infra/` and `apps/` hold the **real resources** those Kustomizations deploy. Splitting them lets the orchestration graph (`dependsOn`, `wait`, `interval`) live separately from the manifests it drives.
+
+---
+
+## How Flux discovers and applies everything
+
+Flux never scans the whole repo — it follows a chain. When something breaks,
+walk this chain from the top until you find the first link that isn't `Ready`.
+
+1. **Flux controllers poll the GitRepository** `flux-system`
+   (URL = your repo, branch = `main`). Set by `flux bootstrap`.
+
+2. **Root Kustomization `flux-system`** (from `gotk-sync.yaml`) reconciles
+   `./clusters/workshop-cluster/gitops/`. It walks that folder and picks up
+   everything listed in each `kustomization.yaml` — the bootstrap files in
+   `flux-system/` and your `fleet-sync.yaml` under `fleet-manager/`.
+
+3. **`fleet-sync`** reconciles `./clusters/workshop-cluster/fleet/`. That
+   folder's `kustomization.yaml` points at `orchestration/`, which registers
+   three child Kustomizations:
+
+   - `infra-sync` — reconciles `infra/resources/` → creates the HelmRepositories.
+   - `operators-sync` (waits on `infra-sync`) — reconciles `fleet/operators-manifests/`, which registers `kyverno-base` → `kyverno-core` → `kyverno-overlays`.
+   - `apps-sync` (waits on `operators-sync`) — reconciles `fleet/apps-manifests/`, which registers `demo-app-base` → `demo-app-core`.
+
+4. **Leaf Kustomizations** (`kyverno-*`, `demo-app-*`) point at the real
+   manifests under `infra/` and `apps/` and apply them. `demo-app-core`
+   applies a **HelmRelease**, which the helm-controller turns into an actual
+   chart install.
+
+Every `path:` in a Flux Kustomization is **relative to the GitRepository root**
+(not to the YAML file's own folder). If you move files around, paths have to
+follow.
+
+### Verifying each layer
+
+```bash
+# 1. Source: is Flux able to pull from GitHub?
+flux get sources git -A
+
+# 2. HelmRepositories: are chart sources reachable?
+flux get sources helm -A
+
+# 3. All Kustomizations — which ones are Ready?
+flux get kustomizations -A
+
+# 4. HelmReleases — which charts are installed?
+flux get helmreleases -A
+
+# 5. Everything at once
+flux get all -A
+
+# 6. Live event stream (great during the workshop)
+flux events --watch
+
+# 7. Drill into a specific failing resource
+flux get kustomizations -A | grep -v True          # find the unhappy one
+kubectl describe kustomization <name> -n flux-system
+kubectl describe helmrelease space-app -n demo-app
+```
+
+Force a reconcile when you don't want to wait for the next interval:
+
+```bash
+flux reconcile source git flux-system              # re-pull the repo
+flux reconcile kustomization fleet-sync            # re-apply a Kustomization
+flux reconcile helmrelease space-app -n demo-app --with-source
+```
+
+---
+
+## Part 5 — Live troubleshooting: the chain is stuck
+
+When you ran `flux get kustomizations -w` at the end of Part 4, the last two rows
+probably never went green:
+
+```
+demo-app-base    False    kustomization path not found: stat /tmp/.../apps/demo-app/base: no such file or directory
+demo-app-core    False    dependency 'demo-app-base' is not ready
+```
+
+That's on purpose. The files you just loaded contain **one real-world bug** —
+find it and fix it **from git** (no `kubectl apply`).
+
+### Hints
+
+1. `apps-sync` itself is Ready — so its *parent* chain (fleet-sync → apps-sync)
+   is fine. The break is on the two **children** it registered.
+2. Read the error carefully: `stat .../apps/demo-app/base: no such file or directory`.
+   Flux is looking at the *repo root*, not under `clusters/workshop-cluster/`.
+3. Confirm the files really exist:
+   ```bash
+   ls clusters/workshop-cluster/apps/demo-app/base
+   ls clusters/workshop-cluster/apps/demo-app/core
+   ```
+   They do. So the files are there, but Flux is looking in the wrong place.
+4. Open the two leaf Kustomizations:
+   ```
+   clusters/workshop-cluster/fleet/apps-manifests/demo-app/base/demo-app-base.yaml
+   clusters/workshop-cluster/fleet/apps-manifests/demo-app/core/demo-app-core.yaml
+   ```
+   Compare their `spec.path` to the `spec.path` in `infra-sync.yaml`,
+   `operators-sync.yaml`, and `apps-sync.yaml` under `fleet/orchestration/`.
+   Spot the inconsistency.
+5. Remember the rule: **`spec.path` is relative to the GitRepository root**,
+   not to the YAML file's own folder.
+
+### Solution
+
+The two leaf Kustomizations are missing the `./clusters/workshop-cluster/`
+prefix. Edit both files:
+
+```yaml
+# clusters/workshop-cluster/fleet/apps-manifests/demo-app/base/demo-app-base.yaml
+spec:
+  path: ./clusters/workshop-cluster/apps/demo-app/base   # was: ./apps/demo-app/base
+```
+
+```yaml
+# clusters/workshop-cluster/fleet/apps-manifests/demo-app/core/demo-app-core.yaml
+spec:
+  path: ./clusters/workshop-cluster/apps/demo-app/core   # was: ./apps/demo-app/core
+```
+
+Commit and push:
+
+```bash
+git add clusters/workshop-cluster/fleet/apps-manifests/demo-app
+git commit -m "Fix demo-app Kustomization paths"
+git push
+```
+
+Don't wait — force a reconcile:
+
+```bash
+flux reconcile source git flux-system
+flux reconcile kustomization demo-app-base
+```
+
+Within ~30 seconds both demo-app Kustomizations go Ready, the HelmRelease
+installs, and the app comes up.
+
+### Why this is a classic footgun
+
+Every Flux Kustomization `spec.path` is resolved against the **GitRepository
+root**, never the file's own directory. Writers forget this all the time when
+they nest manifests into folders for readability. Whenever you see
+`kustomization path not found`, check the path prefix first.
+
+---
+
+## Part 6 — Test the app & Kyverno
 
 ### The app
 
@@ -250,11 +403,11 @@ You should see the `require-app-label` ClusterPolicy (in Audit mode).
 
 ---
 
-## Part 8 — GitOps in action
+## Part 7 — GitOps in action
 
 This is the fun part. Everything below is done by **editing a file and pushing to git** — never by `kubectl apply`.
 
-### 8.1 Bump the chart version (v1 → v2 → v3)
+### 7.1 Bump the chart version (v1 → v2 → v3)
 
 Open `clusters/workshop-cluster/apps/demo-app/core/helm-release.yaml` and change:
 
@@ -273,7 +426,7 @@ Speed it up instead of waiting:
 flux reconcile helmrelease space-app -n demo-app --with-source
 ```
 
-### 8.2 Change a value (ConfigMap-driven)
+### 7.2 Change a value (ConfigMap-driven)
 
 In the same file:
 
@@ -286,7 +439,7 @@ In the same file:
 
 Push. The frontend picks up the new greeting after the next reconcile (the backend pod restarts thanks to the `checksum/config` annotation).
 
-### 8.3 Unlock premium (Secret-driven, on v3)
+### 7.3 Unlock premium (Secret-driven, on v3)
 
 With `version: "3.0.0"`, set a non-empty token:
 
@@ -297,7 +450,7 @@ With `version: "3.0.0"`, set a non-empty token:
 
 Push. The app now shows a "⭐ Premium unlocked" badge and adds premium images + facts.
 
-### 8.4 Drift detection — "Git is the source of truth"
+### 7.4 Drift detection on a HelmRelease
 
 Try to scale the frontend out of band:
 
@@ -306,27 +459,47 @@ kubectl scale deployment space-app-frontend -n demo-app --replicas=3
 kubectl get deploy -n demo-app -w
 ```
 
-Nothing happens — `HelmRelease` does **not** enforce drift by default. Add drift detection:
+Nothing happens. A `HelmRelease` doesn't watch the cluster between upgrades —
+it only acts when the **chart or values change**. To make Flux revert manual
+edits like this one, turn on drift detection:
 
 ```yaml
 # clusters/workshop-cluster/apps/demo-app/core/helm-release.yaml
 spec:
   interval: 1m
   driftDetection:
-    mode: enabled          # values: enabled | warn | disabled
+    mode: enabled    # enabled | warn | disabled
 ```
 
-Push. Scale again — within ~1 minute it scales back to 1.
+With `mode: enabled`, every `interval` Flux diffs what's live against what
+the chart would render. If anything drifted (scaled replicas, edited env var,
+deleted resource), Flux puts it back — no chart change required. `warn` only
+logs the drift; `disabled` is the default.
 
-Confirm:
+Push it, then scale again — within ~1 minute it scales back to 1.
 
 ```bash
 kubectl describe helmrelease space-app -n demo-app | grep -A2 Drift
 ```
 
-### 8.5 `prune` and `force` on Kustomizations
+#### How this differs from `force` on a Kustomization
 
-These two flags control how strictly Flux enforces git on a **Kustomization** (not a HelmRelease):
+Both can "undo" someone's `kubectl edit`, but they live on different objects
+and solve slightly different problems:
+
+| | `driftDetection` (HelmRelease) | `force` (Kustomization) |
+|---|---|---|
+| What it manages | Resources rendered by a **Helm chart** | Plain YAML files tracked by a **Kustomization** |
+| When it runs | Every `interval`, continuously | Every `interval`, continuously |
+| What triggers a fix | Any diff vs. the chart output | Any server-side apply conflict |
+| Typical use | Revert manual changes to chart-managed deployments | Overwrite fields owned by other controllers, recreate immutable fields |
+
+Short version: use `driftDetection` when the resource is deployed by a
+HelmRelease, use `force` when it's deployed by a Kustomization.
+
+### 7.5 `prune` and `force` on Kustomizations
+
+These two flags live on **Kustomizations** (not HelmReleases) and control how strictly Flux enforces git:
 
 | Flag | Effect |
 |---|---|
@@ -339,7 +512,7 @@ Try it: add a simple `ConfigMap` file under `clusters/workshop-cluster/apps/demo
 
 ---
 
-## Part 9 — Multi-cluster mental model
+## Part 8 — Multi-cluster mental model
 
 The whole tree lives under `clusters/workshop-cluster/` on purpose. To add a
 second cluster you would:
