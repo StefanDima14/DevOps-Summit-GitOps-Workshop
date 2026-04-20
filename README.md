@@ -13,14 +13,14 @@ all driven entirely by `git push`.
 
 ```
   your GitHub repo                             Minikube cluster
-  ┌──────────────────────────┐                ┌─────────────────────────┐
-  │ clusters/workshop-cluster │                │ flux-system             │
-  │  ├── gitops/flux-system/  │ ◄── pulls ─── │  └─ source + kustomize  │
-  │  ├── gitops/fleet-manager │                │     controllers         │
-  │  ├── fleet/orchestration  │                │                         │
-  │  ├── infra/               │                │ kyverno-operator        │
-  │  └── apps/demo-app/       │                │ demo-app (space-app)    │
-  └──────────────────────────┘                └─────────────────────────┘
+  ┌──────────────────────────┐               ┌─────────────────────────┐
+  │ clusters/workshop-cluster│               │ flux-system             │
+  │  ├── gitops/flux-system/ │ ◄── pulls ─── │  └─ source + kustomize  │
+  │  ├── gitops/fleet-manager│               │     controllers         │
+  │  ├── fleet/orchestration │               │                         │
+  │  ├── infra/              │               │ kyverno-operator        │
+  │  └── apps/demo-app/      │               │ demo-app (space-app)    │
+  └──────────────────────────┘               └─────────────────────────┘
 ```
 
 Reconciliation chain (top-down, each waits on the previous):
