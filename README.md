@@ -452,16 +452,17 @@ Push. The app now shows a "⭐ Premium unlocked" badge and adds premium images +
 
 ### 7.4 Drift detection on a HelmRelease
 
-Try to scale the frontend out of band:
+Scale the frontend out of band:
 
 ```bash
 kubectl scale deployment space-app-frontend -n demo-app --replicas=3
 kubectl get deploy -n demo-app -w
 ```
 
-Nothing happens. A `HelmRelease` doesn't watch the cluster between upgrades —
-it only acts when the **chart or values change**. To make Flux revert manual
-edits like this one, turn on drift detection:
+The Deployment **does** scale to 3 — and it stays there. A `HelmRelease` doesn't
+watch the cluster between upgrades; it only acts when the **chart or values
+change**, so Flux won't revert the manual edit on its own. To make it snap the
+replicas back, turn on drift detection:
 
 ```yaml
 # clusters/workshop-cluster/apps/demo-app/core/helm-release.yaml
@@ -476,7 +477,8 @@ the chart would render. If anything drifted (scaled replicas, edited env var,
 deleted resource), Flux puts it back — no chart change required. `warn` only
 logs the drift; `disabled` is the default.
 
-Push it, then scale again — within ~1 minute it scales back to 1.
+Push the change, wait for Flux to reconcile the HelmRelease, then scale to 3
+again — within ~1 minute it snaps back to 1.
 
 ```bash
 kubectl describe helmrelease space-app -n demo-app | grep -A2 Drift
@@ -504,11 +506,108 @@ These two flags live on **Kustomizations** (not HelmReleases) and control how st
 | Flag | Effect |
 |---|---|
 | `prune: true` | Remove a file from git → live resource is deleted. |
-| `prune: false` | Removing a file leaves the live resource orphaned. |
+| `prune: false` (default) | Removing a file leaves the live resource orphaned. |
 | `force: true` | Overwrite fields owned by other controllers/users (`kubectl edit`/`kubectl scale`), and recreate resources for immutable-field changes. |
 | `force: false` (default) | Normal server-side apply; reports conflict and stops. |
 
-Try it: add a simple `ConfigMap` file under `clusters/workshop-cluster/apps/demo-app/base/`, push, see it appear. Delete it, push, see it disappear (because `demo-app-base` has `prune: true`… or doesn't — read the file and find out).
+#### Walkthrough: prove what `prune` does
+
+Before starting, peek at the current setting — open
+`clusters/workshop-cluster/fleet/apps-manifests/demo-app/base/demo-app-base.yaml`:
+
+```yaml
+spec:
+  prune: false   # we'll flip this in step 3
+```
+
+**Step 1 — add a ConfigMap and see it appear**
+
+Create `clusters/workshop-cluster/apps/demo-app/base/workshop-config.yaml`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workshop-config
+  namespace: demo-app
+data:
+  owner: "your-name"
+  note: "added during the workshop"
+```
+
+Register it with kustomize — edit
+`clusters/workshop-cluster/apps/demo-app/base/kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - workshop-config.yaml   # add this line
+```
+
+Commit, push, reconcile, verify:
+
+```bash
+git add clusters/workshop-cluster/apps/demo-app/base
+git commit -m "Add workshop-config ConfigMap"
+git push
+flux reconcile kustomization demo-app-base
+kubectl get configmap workshop-config -n demo-app
+```
+
+You should see the ConfigMap.
+
+**Step 2 — delete it from git, watch it orphan**
+
+Remove the file and its reference:
+
+```bash
+rm clusters/workshop-cluster/apps/demo-app/base/workshop-config.yaml
+```
+
+Edit `kustomization.yaml` back to the original (drop the `workshop-config.yaml`
+line). Then:
+
+```bash
+git add clusters/workshop-cluster/apps/demo-app/base
+git commit -m "Remove workshop-config from git"
+git push
+flux reconcile kustomization demo-app-base
+kubectl get configmap workshop-config -n demo-app
+```
+
+The ConfigMap **is still there** even though git no longer knows about it —
+that's `prune: false`. In real life, this is how stale `ConfigMap`s and
+`Secret`s pile up on long-lived clusters.
+
+**Step 3 — flip `prune: true` and watch it get cleaned up**
+
+Edit
+`clusters/workshop-cluster/fleet/apps-manifests/demo-app/base/demo-app-base.yaml`:
+
+```yaml
+spec:
+  prune: true   # was: false
+```
+
+Commit, push, reconcile:
+
+```bash
+git add clusters/workshop-cluster/fleet/apps-manifests/demo-app/base/demo-app-base.yaml
+git commit -m "Enable prune on demo-app-base"
+git push
+flux reconcile kustomization demo-app-base
+kubectl get configmap workshop-config -n demo-app
+```
+
+This time the ConfigMap is **gone** — with `prune: true`, the Kustomization is
+now the source of truth for what exists under it, and the orphan gets deleted.
+
+**Why teams don't default to `prune: true`**: production namespaces often hold
+resources created outside GitOps (other teams, legacy, one-off debugging). A
+careless `prune: true` on a shared Kustomization can wipe other people's work.
+Turn it on only when the Kustomization fully owns its scope.
 
 ---
 
