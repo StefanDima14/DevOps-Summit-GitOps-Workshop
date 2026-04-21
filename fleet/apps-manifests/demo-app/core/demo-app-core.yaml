@@ -6,7 +6,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m0s
-  path: ./apps/demo-app/core
+  path: ./clusters/workshop-cluster/apps/demo-app/core
   prune: false
   force: false
   sourceRef:
