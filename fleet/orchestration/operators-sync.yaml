@@ -5,7 +5,7 @@ metadata:
   name: operators-sync
   namespace: flux-system
 spec:
-  interval: 10m0s
+  interval: 1m0s
   path: ./clusters/workshop-cluster/fleet/operators-manifests
   prune: true
   sourceRef:
